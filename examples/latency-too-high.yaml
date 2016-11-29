@@ -1,6 +1,7 @@
 ---
 name: Demo latency is too high
 description: Fires when the latency of demo endpoints is too high for 5 seconds
+tags: [demo, latency]
 rules:
   latency too high:
     severity: Critical

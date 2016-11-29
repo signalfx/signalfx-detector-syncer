@@ -3,8 +3,9 @@
 import logging
 import json
 import os
-import re
 import yaml
+
+_logger = logging.getLogger(__name__)
 
 
 class Syncer(object):
@@ -16,8 +17,8 @@ class Syncer(object):
     second document is the SignalFlow program text of the detector itself.
     """
 
-    _DESCRIPTION_NAME_PATTERN = re.compile('.*\[from:(?P<name>[^\]]+)\]$')
-    _DESCRIPTION_NAME_FMT = '{description} [from:{name}]'
+    _SYNCER_MARKER_TAG = 'signalfx-detector-syncer'
+    _NAME_TAG_PREFIX = 'from:'
 
     def __init__(self, client, dry_run=False):
         self._client = client
@@ -28,11 +29,11 @@ class Syncer(object):
                 path,
                 lambda e: not e.endswith('.py') and not e.startswith('.'))
         from_files_names = set(from_files.keys())
-        logging.info('Loaded %d detector(s) from %s.', len(from_files), path)
+        _logger.info('Loaded %d detector(s) from %s.', len(from_files), path)
 
         from_signalfx = self.load_from_signalfx()
         from_signalfx_names = set(from_signalfx.keys())
-        logging.info('Found %d detector(s) from sync in SignalFx.',
+        _logger.info('Found %d detector(s) from sync in SignalFx.',
                      len(from_signalfx))
 
         new, common, removed = (
@@ -48,7 +49,7 @@ class Syncer(object):
             if detector['lastUpdated'] > original['lastUpdated']:
                 updated.append(name)
 
-        logging.info('Status: %d new, %d in common (%d updated), %d removed.',
+        _logger.info('Status: %d new, %d in common (%d updated), %d removed.',
                      len(new), len(common), len(updated), len(removed))
 
         for name in new:
@@ -70,7 +71,7 @@ class Syncer(object):
         """
         path = os.path.abspath(path)
         predicate = predicate or (lambda e: True)
-        logging.info('Loading detectors from %s...', path)
+        _logger.info('Loading detectors from %s...', path)
         return dict(
             map(self._load_detector,
                 map(lambda e: os.path.join(path, e),
@@ -95,11 +96,16 @@ class Syncer(object):
         else:
             raise ValueError('unknown detector format')
 
+        # Set lastUpdated from the file's last modified time.
+        # TODO(mpetazzoni): is this ok for git checkouts?
         last_change_ms = int(os.stat(path).st_mtime * 1000)
         detector[1]['lastUpdated'] = last_change_ms
-        detector[1]['description'] = self._DESCRIPTION_NAME_FMT.format(
-                description=detector[1]['description'],
-                name=detector[0])
+
+        # Add tags
+        tags = detector[1].get('tags', [])
+        tags.extend([self._SYNCER_MARKER_TAG, self._NAME_TAG_PREFIX + name])
+        detector[1]['tags'] = tags
+
         return detector
 
     def load_from_signalfx(self):
@@ -109,34 +115,48 @@ class Syncer(object):
         _DESCRIPTION_NAME_PATTERN are returned. Those are detectors that were
         created by this syncer and that should be considered.
         """
-        def match(detector):
-            m = self._DESCRIPTION_NAME_PATTERN.match(detector['description'])
-            return (m.group('name'), detector) if m else None
-        return dict(filter(None, map(match, self._client.get_detectors())))
+        def by_name(detector):
+            tags = set(detector['tags'])
+            # Ignore detectors that don't have the syncer marker tag.
+            if self._SYNCER_MARKER_TAG not in tags:
+                return None
+            # Find the tag with the name tag prefix and extract the detector
+            # source filename from it.
+            for tag in tags:
+                if tag.startswith(self._NAME_TAG_PREFIX):
+                    name = tag.split(self._NAME_TAG_PREFIX)[1]
+                    return (name, detector)
+            return None
+
+        return dict(filter(None, map(by_name, self._client.get_detectors())))
 
     def create_detector(self, name, detector):
         """Create the given detector."""
-        logging.info('Creating new detector %s in SignalFx...',
+        _logger.info('Creating new detector %s in SignalFx...',
                      name)
+        _logger.debug('Detector: %s', detector)
         if not self._dry_run:
             created = self._client.create_detector(detector)
-            logging.info('Created detector %s [%s].', name, created['id'])
+            _logger.info('Created detector %s [%s].', name, created['id'])
 
     def update_detector(self, name, original, detector):
         """Update the given detector."""
-        logging.info('Updating detector %s [%s] in SignalFx...',
+        _logger.info('Updating detector %s [%s] in SignalFx...',
                      name, original['id'])
+        _logger.debug('Detector: %s', detector)
         if not self._dry_run:
             updated = self._client.update_detector(original['id'], detector)
-            logging.info('Updated detector %s [%s].', name, updated['id'])
+            _logger.info('Updated detector %s [%s].', name, updated['id'])
 
     def remove_detector(self, name, detector):
         """Remove the given detector."""
-        logging.info('Removing detector %s [%s] from SignalFx...',
+        _logger.info('Removing detector %s [%s] from SignalFx...',
                      name, detector['id'])
+        _logger.debug('Detector: %s', detector)
         if not self._dry_run:
             self._client.delete_detector(detector['id'])
-            logging.info('Removed detector %s [%s].', name, detector['id'])
+            self._client.delete_tag(self._NAME_TAG_PREFIX + name)
+            _logger.info('Removed detector %s [%s].', name, detector['id'])
 
 
 class _DetectorLoader(object):
@@ -174,7 +194,7 @@ class _JsonDetectorLoader(_DetectorLoader):
     """Detector loader from JSON file contents."""
 
     def _load(self, name, contents):
-        logging.debug('Loading %s as JSON.', name)
+        _logger.debug('Loading %s as JSON.', name)
         return json.loads(contents)
 
 
@@ -182,7 +202,7 @@ class _YamlDetectorLoader(_DetectorLoader):
     """Detector loader from YAML file contents."""
 
     def _load(self, name, contents):
-        logging.debug('Loading %s as YAML.', name)
+        _logger.debug('Loading %s as YAML.', name)
         docs = [d for d in yaml.load_all(contents)]
         detector = docs[0]
         detector['programText'] = docs[1]

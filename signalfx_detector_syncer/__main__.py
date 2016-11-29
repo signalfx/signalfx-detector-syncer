@@ -30,9 +30,10 @@ def main():
 
     options = parser.parse_args()
     logging.basicConfig(stream=sys.stderr, level=options.loglevel)
-    client = signalfx.rest.SignalFxRestClient(token=options.token,
-                                              endpoint=options.api_endpoint)
-    syncer.Syncer(client, options.dry_run).sync(options.directory)
+
+    sfx = signalfx.SignalFx(api_endpoint=options.api_endpoint)
+    client = syncer.Syncer(sfx.rest(options.token), options.dry_run)
+    client.sync(options.directory)
 
 
 if __name__ == '__main__':
