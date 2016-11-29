@@ -20,6 +20,8 @@ Usage
 
   $ sfx-sync-detectors --token=$SFX_AUTH_TOKEN /path/to/detectors/
 
+For full usage information, run with ``-h`` or ``--help``.
+
 How it works
 ~~~~~~~~~~~~
 
@@ -29,6 +31,15 @@ in JSON or YAML format and named as an easily identifiable
 detector: updates to the same file will update the existing detector. Creating
 a new file creates a new detector; removing a file removes the corresponding
 detector from SignalFx.
+
+Detectors managed by the syncer are identified within SignalFx by multiple tags:
+
+* a ``signalfx-detector-syncer`` tag, present on all detectors created and
+  managed by the detector syncer;
+* a ``from:<filename>`` tag, specific to a particular detector, which ties the
+  detector to the file it came from in the synced directory;
+* optionally, a ``<team>`` identifier tag that further scopes the detector (see
+  below *Team scoping*).
 
 JSON
 ^^^^
@@ -50,12 +61,13 @@ the detector.
   ---
   name: The detector name
   description: The detector description
+  tags: [latency, demo]
   rules:
     my label:
       severity: Critical
       description: Something's wrong!
       notifications:
-        - type: email
+        - type: Email
           email: test@test.com
   ---
 
@@ -69,3 +81,11 @@ Specification
 The specification of the *front matter* that configures the detector is
 pretty much what the `detector API`_ expects. The only expection is that rules
 may directly keyed by the detect label they map to if you want to.
+
+Team scoping
+~~~~~~~~~~~~
+
+If you want, you can limit the scope of detectors that the syncer will consider
+by specifying the ``--team`` option with an identifier. This will be used as an
+additional piece of information that the syncer looks for when considering
+which detectors should be updated or removed.
