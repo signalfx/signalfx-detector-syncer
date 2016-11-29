@@ -31,6 +31,7 @@ def main():
 
     options = parser.parse_args()
     logging.basicConfig(stream=sys.stderr, level=options.loglevel)
+    logging.getLogger('requests').setLevel(logging.WARNING)
 
     sfx = signalfx.SignalFx(api_endpoint=options.api_endpoint)
     client = syncer.Syncer(sfx.rest(options.token),
