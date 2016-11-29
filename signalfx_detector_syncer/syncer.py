@@ -20,8 +20,9 @@ class Syncer(object):
     _SYNCER_MARKER_TAG = 'signalfx-detector-syncer'
     _NAME_TAG_PREFIX = 'from:'
 
-    def __init__(self, client, dry_run=False):
+    def __init__(self, client, team=None, dry_run=False):
         self._client = client
+        self._team = team
         self._dry_run = dry_run
 
     def sync(self, path):
@@ -104,12 +105,15 @@ class Syncer(object):
         # Add tags
         tags = detector[1].get('tags', [])
         tags.extend([self._SYNCER_MARKER_TAG, self._NAME_TAG_PREFIX + name])
+        if self._team:
+            tags.append(self._team)
         detector[1]['tags'] = tags
 
         return detector
 
     def load_from_signalfx(self):
-        """Load all detectors from SignalFx that were created by this syncer.
+        """Load all detectors from SignalFx that were created by this syncer
+        under the given team identifier.
 
         All detectors that have a description matching the
         _DESCRIPTION_NAME_PATTERN are returned. Those are detectors that were
@@ -119,6 +123,8 @@ class Syncer(object):
             tags = set(detector['tags'])
             # Ignore detectors that don't have the syncer marker tag.
             if self._SYNCER_MARKER_TAG not in tags:
+                return None
+            if self._team and self._team not in tags:
                 return None
             # Find the tag with the name tag prefix and extract the detector
             # source filename from it.
@@ -132,8 +138,8 @@ class Syncer(object):
 
     def create_detector(self, name, detector):
         """Create the given detector."""
-        _logger.info('Creating new detector %s in SignalFx...',
-                     name)
+        _logger.info('Creating new detector %s in SignalFx with tags %s...',
+                     name, ','.join(detector['tags']))
         _logger.debug('Detector: %s', detector)
         if not self._dry_run:
             created = self._client.create_detector(detector)
