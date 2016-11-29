@@ -76,7 +76,8 @@ class Syncer(object):
         return dict(
             map(self._load_detector,
                 map(lambda e: os.path.join(path, e),
-                    filter(predicate, os.listdir(path)))))
+                    filter(lambda f: os.path.isfile(f) and predicate(f),
+                           os.listdir(path)))))
 
     def _load_detector(self, path):
         """Load a detector from the given file.
