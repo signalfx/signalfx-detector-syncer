@@ -25,10 +25,12 @@ class Syncer(object):
         self._team = team
         self._dry_run = dry_run
 
+    def _filter_predicate(self, entry):
+        return ((entry.endswith('.yaml') or entry.endswith('.json')) and
+                not entry.startswith('.'))
+
     def sync(self, path):
-        from_files = self.load_files(
-                path,
-                lambda e: not e.endswith('.py') and not e.startswith('.'))
+        from_files = self.load_files(path, self._filter_predicate)
         from_files_names = set(from_files.keys())
         _logger.info('Loaded %d detector(s) from %s.', len(from_files), path)
 
@@ -75,9 +77,9 @@ class Syncer(object):
         _logger.info('Loading detectors from %s...', path)
         return dict(
             map(self._load_detector,
-                map(lambda e: os.path.join(path, e),
-                    filter(lambda f: os.path.isfile(f) and predicate(f),
-                           os.listdir(path)))))
+                filter(lambda f: os.path.isfile(f),
+                       map(lambda e: os.path.join(path, e),
+                           filter(lambda f: predicate(f), os.listdir(path))))))
 
     def _load_detector(self, path):
         """Load a detector from the given file.
