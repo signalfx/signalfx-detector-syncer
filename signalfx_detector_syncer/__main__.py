@@ -30,7 +30,8 @@ def main():
     parser.add_argument('directory', default='.', help='Source directory')
 
     options = parser.parse_args()
-    logging.basicConfig(stream=sys.stderr, level=options.loglevel)
+    logging.basicConfig(stream=sys.stderr, level=options.loglevel,
+                        format='%(asctime)s | %(levelname)8s | %(message)s')
     logging.getLogger('requests').setLevel(logging.WARNING)
 
     sfx = signalfx.SignalFx(api_endpoint=options.api_endpoint)
