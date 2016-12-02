@@ -35,7 +35,7 @@ def main():
     logging.getLogger('requests').setLevel(logging.WARNING)
 
     sfx = signalfx.SignalFx(api_endpoint=options.api_endpoint)
-    client = syncer.Syncer(sfx.rest(options.token),
+    client = syncer.Syncer(sfx.rest(options.token, timeout=5),
                            options.team,
                            options.dry_run)
     client.sync(options.directory)
