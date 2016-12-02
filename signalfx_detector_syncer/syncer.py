@@ -19,6 +19,7 @@ class Syncer(object):
 
     _SYNCER_MARKER_TAG = 'signalfx-detector-syncer'
     _NAME_TAG_PREFIX = 'from:'
+    _TEAM_TAG_PREFIX = 'team:'
 
     def __init__(self, client, team=None, dry_run=False):
         self._client = client
@@ -109,7 +110,7 @@ class Syncer(object):
         tags = detector[1].get('tags', [])
         tags.extend([self._SYNCER_MARKER_TAG, self._NAME_TAG_PREFIX + name])
         if self._team:
-            tags.append(self._team)
+            tags.append(self._TEAM_TAG_PREFIX + self._team)
         detector[1]['tags'] = tags
 
         return detector
@@ -127,8 +128,18 @@ class Syncer(object):
             # Ignore detectors that don't have the syncer marker tag.
             if self._SYNCER_MARKER_TAG not in tags:
                 return None
-            if self._team and self._team not in tags:
+
+            # Ignore detectors that don't match the synced team.
+            team = [t for t in tags if t.startswith(self._TEAM_TAG_PREFIX)]
+            if len(team) > 1:
                 return None
+            elif not self._team and team:
+                return None
+            elif self._team and not team:
+                return None
+            elif self._team != team[0].split(self._TEAM_TAG_PREFIX)[1]:
+                return None
+
             # Find the tag with the name tag prefix and extract the detector
             # source filename from it.
             for tag in tags:
