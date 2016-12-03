@@ -3,6 +3,7 @@
 import logging
 import json
 import os
+import re
 import yaml
 
 _logger = logging.getLogger(__name__)
@@ -158,6 +159,9 @@ class Syncer(object):
         if not self._dry_run:
             created = self._client.create_detector(detector)
             _logger.info('Created detector %s [%s].', name, created['id'])
+        else:
+            self._client.validate_detector(detector)
+            _logger.info('Detector %s is valid.', name)
 
     def update_detector(self, name, original, detector):
         """Update the given detector."""
@@ -167,6 +171,9 @@ class Syncer(object):
         if not self._dry_run:
             updated = self._client.update_detector(original['id'], detector)
             _logger.info('Updated detector %s [%s].', name, updated['id'])
+        else:
+            self._client.validate_detector(detector)
+            _logger.info('Detector %s is valid.', name)
 
     def remove_detector(self, name, detector):
         """Remove the given detector."""
@@ -174,8 +181,10 @@ class Syncer(object):
                      name, detector['id'])
         _logger.debug('Detector: %s', detector)
         if not self._dry_run:
-            self._client.delete_detector(detector['id'])
-            self._client.delete_tag(self._NAME_TAG_PREFIX + name)
+            self._client.delete_detector(detector['id'],
+                                         fail_on_not_found=False)
+            self._client.delete_tag(self._NAME_TAG_PREFIX + name,
+                                    fail_on_not_found=False)
             _logger.info('Removed detector %s [%s].', name, detector['id'])
 
 
@@ -221,9 +230,12 @@ class _JsonDetectorLoader(_DetectorLoader):
 class _YamlDetectorLoader(_DetectorLoader):
     """Detector loader from YAML file contents."""
 
+    _SPLITTER = re.compile(r'^---$', re.MULTILINE)
+
     def _load(self, name, contents):
         _logger.debug('Loading %s as YAML.', name)
-        docs = [d for d in yaml.load_all(contents)]
-        detector = docs[0]
+        docs = list(map(str.strip,
+                        filter(None, self._SPLITTER.split(contents))))
+        detector = yaml.load(docs[0])
         detector['programText'] = docs[1]
         return detector
