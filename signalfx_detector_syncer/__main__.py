@@ -14,7 +14,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-t', '--token', required=True,
                         help='Authentication token')
-    parser.add_argument('--team', help='An optional team identifier')
+    parser.add_argument('--scope', help='An optional base scope')
     parser.add_argument('-a', '--api-endpoint',
                         help='SignalFx API endpoint')
     parser.add_argument('-n', '--dry-run', action='store_true',
@@ -36,7 +36,7 @@ def main():
 
     sfx = signalfx.SignalFx(api_endpoint=options.api_endpoint)
     client = syncer.Syncer(sfx.rest(options.token, timeout=5),
-                           options.team,
+                           options.scope,
                            options.dry_run)
     client.sync(options.directory)
 

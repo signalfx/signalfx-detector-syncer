@@ -19,100 +19,117 @@ class Syncer(object):
     """
 
     _SYNCER_MARKER_TAG = 'signalfx-detector-syncer'
-    _NAME_TAG_PREFIX = 'from:'
-    _TEAM_TAG_PREFIX = 'team:'
+    _FROM_TAG_PREFIX = 'from:'
+    _SCOPE_TAG_PREFIX = 'scope:'
 
-    def __init__(self, client, team=None, dry_run=False):
+    def __init__(self, client, scope=None, dry_run=False):
         self._client = client
-        self._team = team
+        self._scope = scope
         self._dry_run = dry_run
+
+        self._tags = [self._SYNCER_MARKER_TAG]
+        if scope:
+            self._tags.append(self._SCOPE_TAG_PREFIX + scope)
+
+    def _d(self, detector_path):
+        if self._scope:
+            return '{} (in scope {})'.format(detector_path, self._scope)
+        return detector_path
 
     def _filter_predicate(self, entry):
         return ((entry.endswith('.yaml') or entry.endswith('.json')) and
                 not entry.startswith('.'))
 
-    def sync(self, path):
-        from_files = self.load_files(path, self._filter_predicate)
-        from_files_names = set(from_files.keys())
-        _logger.info('Loaded %d detector(s) from %s.', len(from_files), path)
+    def sync(self, base_path):
+        from_files = self.load_files(base_path, self._filter_predicate)
+        from_files_paths = set(from_files.keys())
+        _logger.info('Loaded %d detector(s) from %s.',
+                     len(from_files),
+                     base_path)
 
         from_signalfx = self.load_from_signalfx()
-        from_signalfx_names = set(from_signalfx.keys())
+        from_signalfx_paths = set(from_signalfx.keys())
         _logger.info('Found %d detector(s) from sync in SignalFx.',
                      len(from_signalfx))
 
         new, common, removed = (
-            from_files_names.difference(from_signalfx_names),
-            from_files_names.intersection(from_signalfx_names),
-            from_signalfx_names.difference(from_files_names)
+            from_files_paths.difference(from_signalfx_paths),
+            from_files_paths.intersection(from_signalfx_paths),
+            from_signalfx_paths.difference(from_files_paths)
         )
 
         updated = []
-        for name in common:
-            original = from_signalfx[name]
-            detector = from_files[name]
+        for path in common:
+            original = from_signalfx[path]
+            detector = from_files[path]
             if detector['lastUpdated'] > original['lastUpdated']:
-                updated.append(name)
+                updated.append(path)
 
         _logger.info('Status: %d new, %d in common (%d updated), %d removed.',
                      len(new), len(common), len(updated), len(removed))
 
-        for name in new:
-            self.create_detector(name, from_files[name])
-        for name in updated:
-            self.update_detector(name, original, detector)
-        for name in removed:
-            self.remove_detector(name, from_signalfx[name])
+        for path in new:
+            self.create_detector(path, from_files[path])
+        for path in updated:
+            self.update_detector(path, original, detector)
+        for path in removed:
+            self.remove_detector(path, from_signalfx[path])
 
-    def load_files(self, path, predicate=None):
-        """Loads all detectors from the given path.
+    def load_files(self, base_path, predicate=None):
+        """Loads all detectors from the given base path and all its sub
+        directories.
 
         Args:
-            path (string): path to the directory containing detector files.
+            base_path (string): path to the directory containing detector
+                files.
             predicate (lambda): a predicate to filter files from the given
                 directory.
         Returns:
-            A dictionary of the loaded detectors, keyed by the file name.
+            A dictionary of the loaded detectors, keyed by the file path name.
         """
-        path = os.path.abspath(path)
+        base_path = os.path.abspath(base_path) + os.path.sep
         predicate = predicate or (lambda e: True)
-        _logger.info('Loading detectors from %s...', path)
-        return dict(
-            map(self._load_detector,
-                filter(lambda f: os.path.isfile(f),
-                       map(lambda e: os.path.join(path, e),
-                           filter(lambda f: predicate(f), os.listdir(path))))))
+        _logger.info('Loading detectors from %s...', base_path)
 
-    def _load_detector(self, path):
-        """Load a detector from the given file.
+        detectors = {}
+        for t in os.walk(base_path):
+            scope = t[0].split(base_path)[1]
+            for f in filter(predicate, t[2]):
+                path = os.path.join(scope, f)
+                detectors[path] = self._load_detector(base_path, path)
+        return detectors
+
+    def _load_detector(self, base_path, path):
+        """Load a detector from a given location.
 
         Args:
-            path (string): absolute path to the file containing the detector.
+            base_path (string): absolute base path from which detectors are
+                synced from.
+            path (string): relative path to the file containing the detector.
         Returns:
             The loaded detector model.
         """
-        name = os.path.basename(path)
-        with open(path) as f:
+        file_path = os.path.join(base_path, path)
+        with open(file_path) as f:
             contents = f.read()
 
         if contents.startswith('{'):
-            detector = _JsonDetectorLoader().load(name, contents)
+            detector = _JsonDetectorLoader().load(path, contents)
         elif contents.startswith('---\n'):
-            detector = _YamlDetectorLoader().load(name, contents)
+            detector = _YamlDetectorLoader().load(path, contents)
         else:
             raise ValueError('unknown detector format')
 
         # Set lastUpdated from the file's last modified time.
         # TODO(mpetazzoni): is this ok for git checkouts?
-        last_change_ms = int(os.stat(path).st_mtime * 1000)
-        detector[1]['lastUpdated'] = last_change_ms
+        last_change_ms = int(os.stat(file_path).st_mtime * 1000)
+        detector['lastUpdated'] = last_change_ms
 
         # Add tags
-        tags = detector[1].get('tags', [])
-        tags.extend([self._SYNCER_MARKER_TAG, self._NAME_TAG_PREFIX + name])
-        if self._team:
-            tags.append(self._TEAM_TAG_PREFIX + self._team)
-        detector[1]['tags'] = tags
+        tags = detector.get('tags', [])
+        tags.extend(self._tags)
+        tags.append(self._FROM_TAG_PREFIX + path)
+        detector['tags'] = tags
 
         return detector
 
@@ -124,78 +141,80 @@ class Syncer(object):
         _DESCRIPTION_NAME_PATTERN are returned. Those are detectors that were
         created by this syncer and that should be considered.
         """
-        def by_name(detector):
+        def by_path(detector):
             tags = set(detector['tags'])
-            # Ignore detectors that don't have the syncer marker tag.
-            if self._SYNCER_MARKER_TAG not in tags:
-                return None
-
-            # Ignore detectors that don't match the synced team.
-            team = [t for t in tags if t.startswith(self._TEAM_TAG_PREFIX)]
-            if len(team) > 1:
-                return None
-            elif not self._team and team:
-                return None
-            elif self._team and not team:
-                return None
-            elif self._team != team[0].split(self._TEAM_TAG_PREFIX)[1]:
-                return None
+            path = None
 
             # Find the tag with the name tag prefix and extract the detector
-            # source filename from it.
+            # source file path from it.
             for tag in tags:
-                if tag.startswith(self._NAME_TAG_PREFIX):
-                    name = tag.split(self._NAME_TAG_PREFIX)[1]
-                    return (name, detector)
-            return None
+                # If we don't have a scope, we need to make sure we're not
+                # returning detectors that have one.
+                if not self._scope and tag.startswith(self._SCOPE_TAG_PREFIX):
+                    return None
+                if tag.startswith(self._FROM_TAG_PREFIX):
+                    path = tag.split(self._FROM_TAG_PREFIX)[1]
 
-        return dict(filter(None, map(by_name, self._client.get_detectors())))
+            return (path, detector) if path else None
 
-    def create_detector(self, name, detector):
+        return dict(filter(None,
+                           map(by_path,
+                               self._client.get_detectors(tags=self._tags))))
+
+    def create_detector(self, path, detector):
         """Create the given detector."""
-        _logger.info('Creating new detector %s in SignalFx with tags %s...',
-                     name, ','.join(detector['tags']))
-        _logger.debug('Detector: %s', detector)
         if not self._dry_run:
+            _logger.info('Creating detector %s...', self._d(path))
+            _logger.debug('Detector: %s', detector)
             created = self._client.create_detector(detector)
-            _logger.info('Created detector %s [%s].', name, created['id'])
+            _logger.info('Created detector %s [%s].',
+                         self._d(path), created['id'])
         else:
+            _logger.info('Validating new detector %s...', path)
+            _logger.debug('Detector: %s', detector)
             self._client.validate_detector(detector)
-            _logger.info('Detector %s is valid.', name)
+            _logger.info('Detector %s is valid.', path)
 
-    def update_detector(self, name, original, detector):
+    def update_detector(self, path, original, detector):
         """Update the given detector."""
-        _logger.info('Updating detector %s [%s] in SignalFx...',
-                     name, original['id'])
-        _logger.debug('Detector: %s', detector)
         if not self._dry_run:
+            _logger.info('Updating detector %s [%s]...',
+                         self._d(path), original['id'])
+            _logger.debug('Detector: %s', detector)
             updated = self._client.update_detector(original['id'], detector)
-            _logger.info('Updated detector %s [%s].', name, updated['id'])
+            _logger.info('Updated detector %s [%s].',
+                         self._d(path), updated['id'])
         else:
+            _logger.info('Validating updated detector %s...', path)
+            _logger.debug('Detector: %s', detector)
             self._client.validate_detector(detector)
-            _logger.info('Detector %s is valid.', name)
+            _logger.info('Detector %s is valid.', path)
 
-    def remove_detector(self, name, detector):
+    def remove_detector(self, path, detector):
         """Remove the given detector."""
-        _logger.info('Removing detector %s [%s] from SignalFx...',
-                     name, detector['id'])
-        _logger.debug('Detector: %s', detector)
         if not self._dry_run:
+            _logger.info('Removing detector %s [%s]...',
+                         self._d(path), detector['id'])
+            _logger.debug('Detector: %s', detector)
             self._client.delete_detector(detector['id'],
-                                         fail_on_not_found=False)
-            self._client.delete_tag(self._NAME_TAG_PREFIX + name,
-                                    fail_on_not_found=False)
-            _logger.info('Removed detector %s [%s].', name, detector['id'])
+                                         ignore_not_found=True)
+            self._client.delete_tag(self._NAME_TAG_PREFIX + path,
+                                    ignore_not_found=True)
+            _logger.info('Removed detector %s [%s].',
+                         self._d(path), detector['id'])
+        else:
+            _logger.info('Skipped removal of detector %s.',
+                         self._d(path))
 
 
 class _DetectorLoader(object):
     """Base class for detector loaders."""
 
-    def _load(self, name, contents):
+    def _load(self, path, contents):
         raise NotImplementedError
 
-    def load(self, name, contents):
-        detector = self.validate(self._load(name, contents))
+    def load(self, path, contents):
+        detector = self.validate(self._load(path, contents))
 
         # Coerce rules into a list with detectLabels instead of a dict (the API
         # is silly).
@@ -207,7 +226,7 @@ class _DetectorLoader(object):
                 rules_list.append(rule)
             detector['rules'] = rules_list
 
-        return (name, detector)
+        return detector
 
     def validate(self, detector):
         if not detector['name']:
@@ -222,8 +241,8 @@ class _DetectorLoader(object):
 class _JsonDetectorLoader(_DetectorLoader):
     """Detector loader from JSON file contents."""
 
-    def _load(self, name, contents):
-        _logger.debug('Loading %s as JSON.', name)
+    def _load(self, path, contents):
+        _logger.debug('Loading %s as JSON.', path)
         return json.loads(contents)
 
 
@@ -232,8 +251,8 @@ class _YamlDetectorLoader(_DetectorLoader):
 
     _SPLITTER = re.compile(r'^---$', re.MULTILINE)
 
-    def _load(self, name, contents):
-        _logger.debug('Loading %s as YAML.', name)
+    def _load(self, path, contents):
+        _logger.debug('Loading %s as YAML.', path)
         docs = list(map(str.strip,
                         filter(None, self._SPLITTER.split(contents))))
         detector = yaml.load(docs[0])
