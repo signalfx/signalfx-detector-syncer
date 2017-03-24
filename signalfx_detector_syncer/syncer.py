@@ -37,7 +37,7 @@ class Syncer(object):
         return detector_path
 
     def _filter_predicate(self, entry):
-        return ((entry.endswith('.yaml') or entry.endswith('.json')) and
+        return ((entry.endswith(('.yaml', '.yml', '.json'))) and
                 not entry.startswith('.'))
 
     def sync(self, base_path):
