@@ -77,10 +77,14 @@ Specification
 ^^^^^^^^^^^^^
 
 .. _detector API: https://developers.signalfx.com/docs/detector
+.. _detector Model: https://developers.signalfx.com/docs/detector-model
 
 The specification of the *front matter* that configures the detector is
 pretty much what the `detector API`_ expects. The only expection is that rules
 may directly keyed by the detect label they map to if you want to.
+
+You will also want to look at the `detector Model`_  for additional details
+around notifications, rules and visualization options.
 
 Scoping
 ~~~~~~~
