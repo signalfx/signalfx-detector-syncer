@@ -71,7 +71,7 @@ class Syncer(object):
         for path in new:
             self.create_detector(path, from_files[path])
         for path in updated:
-            self.update_detector(path, original, detector)
+            self.update_detector(path, from_signalfx[path], from_files[path])
         for path in removed:
             self.remove_detector(path, from_signalfx[path])
 
