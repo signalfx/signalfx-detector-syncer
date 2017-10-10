@@ -198,7 +198,7 @@ class Syncer(object):
             _logger.debug('Detector: %s', detector)
             self._client.delete_detector(detector['id'],
                                          ignore_not_found=True)
-            self._client.delete_tag(self._NAME_TAG_PREFIX + path,
+            self._client.delete_tag(self._FROM_TAG_PREFIX + path,
                                     ignore_not_found=True)
             _logger.info('Removed detector %s [%s].',
                          self._d(path), detector['id'])
