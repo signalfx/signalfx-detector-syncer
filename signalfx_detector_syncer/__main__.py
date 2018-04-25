@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (C) 2016-2017 SignalFx, Inc. All rights reserved.
+# Copyright (C) 2016-2018 SignalFx, Inc. All rights reserved.
 
 import argparse
 import logging

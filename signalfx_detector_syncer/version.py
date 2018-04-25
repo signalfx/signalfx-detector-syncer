@@ -1,4 +1,4 @@
-# Copyright (C) 2016-2017 SignalFx, Inc. All rights reserved.
+# Copyright (C) 2016-2018 SignalFx, Inc. All rights reserved.
 
 name = 'signalfx-detector-syncer'
-version = '0.8'
+version = '0.9'
