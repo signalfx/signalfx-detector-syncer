@@ -1,10 +1,15 @@
 # Copyright (C) 2016-2018 SignalFx, Inc. All rights reserved.
+# Copyright (C) 2019-2022 Splunk, Inc. All rights reserved.
 
 import logging
 import json
 import os
 import re
-import yaml
+from yaml import load as yaml_load
+try:
+    from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:
+    from yaml import Loader, Dumper
 
 _logger = logging.getLogger(__name__)
 
@@ -255,6 +260,6 @@ class _YamlDetectorLoader(_DetectorLoader):
         _logger.debug('Loading %s as YAML.', path)
         docs = list(map(str.strip,
                         filter(None, self._SPLITTER.split(contents))))
-        detector = yaml.load(docs[0])
+        detector = yaml_load(docs[0], Loader=Loader)
         detector['programText'] = docs[1]
         return detector

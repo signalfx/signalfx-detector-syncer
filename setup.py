@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 # Copyright (C) 2016-2018 SignalFx, Inc. All rights reserved.
+# Copyright (C) 2019-2022 Splunk, Inc. All rights reserved.
 
 from setuptools import setup, find_packages
 
@@ -16,9 +17,9 @@ with open('requirements.txt') as f:
 setup(
     name=name,  # noqa
     version=version,  # noqa
-    author='SignalFx, Inc',
-    author_email='info@signalfx.com',
-    description='SignalFx detector sync utility',
+    author='Splunk, Inc',
+    author_email='mpetazzoni@splunk.com',
+    description='Splunk Observability / SignalFx detector sync utility',
     license='Apache Software License v2',
     long_description=long_description,
     zip_safe=True,
